@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434/api}"
+MODEL="${MODEL:-gemma3:12b}"
+shell_name=$(basename $SHELL)
+
+supported_shell=false
+case $shell_name in
+  zsh)
+    supported_shell=true
+    if [[ -z "HISTFILE" ]]; then
+      echo "HISTFILE is not found, assumed path could be wrong, please \`export HISTFILE\`" >&2
+      HISTFILE="$HOME/.zsh_history"
+    fi
+    ;;
+  bash)
+    supported_shell=true
+    HISTFILE="$HOME/.bash_history"
+    ;;
+esac
+
+# Check if jq is installed
+if ! command -v jq &> /dev/null; then
+  echo "jq could not be found." >&2
+  exit 1
+fi
+# Check if curl is installed
+if ! command -v curl &> /dev/null; then
+  echo "curl could not be found." >&2
+  exit 1
+fi
+# Check if glow is installed
+if ! command -v glow &> /dev/null; then
+  echo "(glow could not be found, using plain output.)" >&2
+  GLOW="cat"
+else
+  GLOW="glow"
+fi
+
+set_exitcode_capture() {
+  # Display help based on the shell name
+  echo -n "To capture the last exit status, "
+  case $shell_name in
+    bash)
+      echo "add the following to your ~/.bashrc file:"
+      echo "  export PROMPT_COMMAND='export EXIT_CODE=\$?'"
+      ;;
+    zsh)
+      echo "add the following to your ~/.zshrc file:"
+      echo "  precmd() { export EXIT_CODE=\$? }"
+      ;;
+  esac
+}
+
+if $supported_shell; then
+  # Check if the variable is set
+  if [[ -z "$EXIT_CODE" ]]; then
+    echo "EXIT_CODE is not set" >&2
+    set_exitcode_capture >&2
+    EXIT_CODE=""
+  else
+    EXIT_CODE="with exit code $EXIT_CODE"
+  fi
+fi
+# check if ollama is running
+if ! curl -s "$OLLAMA_URL/version" &> /dev/null ; then
+  echo "Ollama is not running on $OLLAMA_URL. Please start it or check the URL." >&2
+  exit 1
+fi
+
+
+get_os() {
+  . /etc/os-release
+  if [[ ! -z "$NAME" ]]; then
+    echo "The distro is $NAME."
+  fi
+}
+get_commands() {
+  /bin/ls /bin
+}
+get_history() {
+  echo "last command used was: $(tail -n 2 "$HISTFILE" | head -n 1), exit code: $EXIT_CODE (maybe not useful)."
+}
+
+PROMPT_O="Help me write to write commands on Linux, 
+please be short and brief, no need to explain much, no extra information,
+$(get_os)
+$($supported_shell && get_history)
+I want to: "
+PROMPT="${PROMPT:-$PROMPT_O}"
+
+# Function to display usage
+usage() {
+  echo "Usage: $0 [question]"
+  exit 1
+}
+
+generate_response() {
+  local prompt=$(echo "$PROMPT $@" | jq -Rsa .)
+
+  options=$(jq -n '{
+  num_predict: 512,
+  temperature: 0.5
+  }')
+  local payload=$(
+    jq -n \
+      --arg model "$MODEL" \
+      --arg prompt "$prompt" \
+      --argjson options "$options" \
+      '{model: $model, prompt: $prompt, options: $options, stream: false}'
+  )
+  curl -sN "$OLLAMA_URL/generate" \
+    -d "$payload" | jq -j '.response // empty'
+  echo ""
+}
+
+#MAIN
+
+printf "\033[1;37m\033[48;5;93m\033[5m I am thinking...\033[0m"
+if [[ $# -eq 0 ]]; then
+  res=$(generate_response "fix last command")
+else
+  res=$(generate_response "$@")
+fi
+printf "\033[2K"
+$GLOW <<<$res
