@@ -5,31 +5,31 @@ shell_name=$(basename $SHELL)
 
 supported_shell=false
 case $shell_name in
-  zsh)
-    supported_shell=true
-    if [[ -z "HISTFILE" ]]; then
-      echo "HISTFILE is not found, assumed path could be wrong, please \`export HISTFILE\`" >&2
-      HISTFILE="$HOME/.zsh_history"
-    fi
-    ;;
-  bash)
-    supported_shell=true
-    HISTFILE="$HOME/.bash_history"
-    ;;
+zsh)
+  supported_shell=true
+  if [[ -z "HISTFILE" ]]; then
+    echo "HISTFILE is not found, assumed path could be wrong, please \`export HISTFILE\`" >&2
+    HISTFILE="$HOME/.zsh_history"
+  fi
+  ;;
+bash)
+  supported_shell=true
+  HISTFILE="${HISTFILE:-$HOME/.bash_history}"
+  ;;
 esac
 
 # Check if jq is installed
-if ! command -v jq &> /dev/null; then
+if ! command -v jq &>/dev/null; then
   echo "jq could not be found." >&2
   exit 1
 fi
 # Check if curl is installed
-if ! command -v curl &> /dev/null; then
+if ! command -v curl &>/dev/null; then
   echo "curl could not be found." >&2
   exit 1
 fi
 # Check if glow is installed
-if ! command -v glow &> /dev/null; then
+if ! command -v glow &>/dev/null; then
   echo "(glow could not be found, using plain output.)" >&2
   GLOW="cat"
 else
@@ -37,17 +37,17 @@ else
 fi
 
 set_exitcode_capture() {
-  # Display help based on the shell name
+  # Display help to export the exit code
   echo -n "To capture the last exit status, "
   case $shell_name in
-    bash)
-      echo "add the following to your ~/.bashrc file:"
-      echo "  export PROMPT_COMMAND='export EXIT_CODE=\$?'"
-      ;;
-    zsh)
-      echo "add the following to your ~/.zshrc file:"
-      echo "  precmd() { export EXIT_CODE=\$? }"
-      ;;
+  bash)
+    echo "add the following to your ~/.bashrc file:"
+    echo "  export PROMPT_COMMAND='export EXIT_CODE=\$?'"
+    ;;
+  zsh)
+    echo "add the following to your ~/.zshrc file:"
+    echo "  precmd() { export EXIT_CODE=\$? }"
+    ;;
   esac
 }
 
@@ -62,11 +62,10 @@ if $supported_shell; then
   fi
 fi
 # check if ollama is running
-if ! curl -s "$OLLAMA_URL/version" &> /dev/null ; then
+if ! curl -s "$OLLAMA_URL/version" &>/dev/null; then
   echo "Ollama is not running on $OLLAMA_URL. Please start it or check the URL." >&2
   exit 1
 fi
-
 
 get_os() {
   . /etc/os-release
